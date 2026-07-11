@@ -1,6 +1,16 @@
 # BOUTIQUE 在线商城
 
+![Java](https://img.shields.io/badge/Java-17-blue)
+![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.2-brightgreen)
+![React](https://img.shields.io/badge/React-19-61DAFB)
+![Tailwind CSS](https://img.shields.io/badge/Tailwind%20CSS-4-06B6D4)
+![License](https://img.shields.io/badge/License-MIT-yellow)
+
 一个以中性色、极简网格与高级感字体为设计基调的在线商城系统。后端采用 Java + Spring Boot 3 + MySQL + Redis 自实现，前端使用 React + Tailwind CSS + Framer Motion。
+
+<p align="center">
+  <img src="frontend/public/screenshots/home.png" alt="首页" width="800">
+</p>
 
 ## 技术栈
 
@@ -33,6 +43,7 @@ online-shop/
 │   ├── shop-admin/        # 管理后台接口（端口 8081）
 │   └── pom.xml
 ├── frontend/              # React 前端（端口 5173）
+│   └── public/screenshots/
 ├── sql/
 │   ├── schema.sql         # 数据库结构
 │   ├── data.sql           # 演示数据
@@ -57,23 +68,13 @@ mysql -uroot -proot --default-character-set=utf8mb4 < sql/init.sql
 
 ### 2. 启动后端
 
-在项目根目录执行：
-
 ```bash
 cd backend
 mvn clean install -DskipTests
-```
 
-然后分别启动前台和管理后台（需要两个终端）：
-
-```bash
-cd backend/shop-portal
-mvn spring-boot:run -DskipTests
-```
-
-```bash
-cd backend/shop-admin
-mvn spring-boot:run -DskipTests
+# 需要两个终端分别启动
+cd shop-portal && mvn spring-boot:run -DskipTests
+cd shop-admin && mvn spring-boot:run -DskipTests
 ```
 
 ### 3. 启动前端
@@ -95,10 +96,14 @@ npm run dev
 
 ## 接口文档
 
-启动服务后访问：
-
 - 前台接口文档：http://localhost:8080/doc.html
 - 管理后台接口文档：http://localhost:8081/doc.html
+
+## 界面预览
+
+| 首页 | 商品详情 | 订单中心 |
+|---|---|---|
+| ![首页](frontend/public/screenshots/home.png) | ![商品详情](frontend/public/screenshots/product-detail.png) | ![订单中心](frontend/public/screenshots/orders.png) |
 
 ## 已实现功能
 
@@ -119,14 +124,15 @@ npm run dev
 - 订单管理（列表、发货）
 - 用户管理（列表、状态调整）
 
-## 高可用设计
+## 高可用与并发设计
 
 - **Redis 缓存**：可用于商品分类、热门商品、购物车等缓存（已预留结构，可扩展）。
-- **Redisson 分布式锁**：订单创建时锁定库存，防止超卖。
-- **数据库乐观锁**：库存扣减使用 SQL 条件更新，保证原子性。
+- **Redisson 分布式锁**：用户维度购物车锁，防止同一用户并发下单重复扣库存。
+- **数据库乐观锁（CAS）**：库存扣减使用 SQL 条件更新，保证原子性，避免超卖。
+- **雪花算法订单号**：订单号使用 `IdWorker.getId()` 生成，高并发下不重复。
 - **连接池优化**：HikariCP 配置合理的连接池参数。
 - **接口统一返回**：统一响应格式与全局异常处理。
-- **幂等设计**：订单号按时间戳 + 随机数生成，避免重复提交。
+- **幂等设计**：订单号全局唯一，避免重复提交。
 
 ## 商品图片视觉规范
 

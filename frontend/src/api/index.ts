@@ -1,5 +1,5 @@
 import { get, post, put, del } from './request';
-import type { HomeData, Product, Page, Category, CartItem, Address, Order, User } from '../types';
+import type { HomeData, Product, Page, Category, CartItem, Address, Order, OrderCreateResponse, OrderCreateStatusResponse, User } from '../types';
 
 export const homeApi = {
   getHome: () => get<HomeData>('/api/home/index'),
@@ -36,7 +36,8 @@ export const addressApi = {
 };
 
 export const orderApi = {
-  create: (data: { addressId: number; remark?: string }) => post<string>('/api/order/create', data),
+  create: (data: { addressId: number; remark?: string }) => post<OrderCreateResponse>('/api/order/create', data),
+  createStatus: (orderNo: string) => get<OrderCreateStatusResponse>('/api/order/create/status', { orderNo }),
   list: (status?: number) => get<Order[]>('/api/order/list', { status }),
   detail: (orderNo: string) => get<Order>('/api/order/detail', { orderNo }),
   pay: (orderNo: string) => post<void>(`/api/order/pay?orderNo=${encodeURIComponent(orderNo)}`),

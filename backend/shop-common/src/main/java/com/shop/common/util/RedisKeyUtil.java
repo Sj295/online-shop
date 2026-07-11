@@ -56,4 +56,20 @@ public class RedisKeyUtil {
     public static String skuStockKey(Long skuId) {
         return PREFIX + "stock:sku:" + skuId;
     }
+
+    public static String orderCreateQueueKey() {
+        return PREFIX + "queue:order:create";
+    }
+
+    public static String orderCreateStatusKey(String orderNo) {
+        return PREFIX + "order:create:status:" + orderNo;
+    }
+
+    public static String orderCreateTaskKey(String orderNo) {
+        return PREFIX + "order:create:task:" + orderNo;
+    }
+
+    public static String orderCreateLockKey(Long userId, Long productId) {
+        return PREFIX + "lock:order:create:" + userId + ":" + productId;
+    }
 }

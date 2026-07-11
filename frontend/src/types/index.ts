@@ -83,6 +83,17 @@ export interface OrderItem {
   totalAmount: number;
 }
 
+export interface OrderCreateResponse {
+  orderNo: string;
+  status: string;
+}
+
+export interface OrderCreateStatusResponse {
+  orderNo: string;
+  status: string;
+  message: string;
+}
+
 export interface Carousel {
   id: number;
   title: string;

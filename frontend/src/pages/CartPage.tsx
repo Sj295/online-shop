@@ -69,7 +69,22 @@ export function CartPage() {
     }
     setSubmitting(true);
     try {
-      const orderNo = await orderApi.create({ addressId: selectedAddress });
+      const { orderNo } = await orderApi.create({ addressId: selectedAddress });
+      let finalStatus = '';
+      for (let i = 0; i < 60; i++) {
+        const statusRes = await orderApi.createStatus(orderNo);
+        finalStatus = statusRes.status;
+        if (finalStatus === 'SUCCESS') {
+          break;
+        }
+        if (finalStatus === 'FAILED') {
+          throw new Error(statusRes.message || '订单创建失败');
+        }
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+      if (finalStatus !== 'SUCCESS') {
+        throw new Error('订单创建超时');
+      }
       await orderApi.pay(orderNo);
       alert('订单创建并支付成功');
       loadCart();

@@ -1,0 +1,18 @@
+{
+  "total": 250,
+  "success": 187,
+  "business_fail": 63,
+  "timeout": 0,
+  "error": 0,
+  "elapsed_seconds": 2.418,
+  "tps": 77.34,
+  "avg_latency_ms": 57.23,
+  "p50_latency_ms": 32.67,
+  "p95_latency_ms": 194.08,
+  "p99_latency_ms": 228.96,
+  "oversold": 0,
+  "timestamp": "2026-07-11T15:40:16.735380",
+  "initial_stock": 300,
+  "current_stock": 111,
+  "sold": 189
+}

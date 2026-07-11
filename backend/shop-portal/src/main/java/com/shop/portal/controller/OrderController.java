@@ -2,6 +2,8 @@ package com.shop.portal.controller;
 
 import cn.dev33.satoken.stp.StpUtil;
 import com.shop.common.dto.OrderCreateDTO;
+import com.shop.common.dto.OrderCreateResponse;
+import com.shop.common.dto.OrderCreateStatusResponse;
 import com.shop.common.result.Result;
 import com.shop.common.service.OrderService;
 import com.shop.common.vo.OrderVO;
@@ -21,10 +23,15 @@ public class OrderController {
     }
 
     @PostMapping("/create")
-    public Result<String> create(@Valid @RequestBody OrderCreateDTO dto) {
+    public Result<OrderCreateResponse> create(@Valid @RequestBody OrderCreateDTO dto) {
         Long userId = StpUtil.getLoginIdAsLong();
-        String orderNo = orderService.createOrder(userId, dto.getAddressId(), dto.getRemark());
-        return Result.success(orderNo);
+        return Result.success(orderService.submitOrder(userId, dto.getAddressId(), dto.getRemark()));
+    }
+
+    @GetMapping("/create/status")
+    public Result<OrderCreateStatusResponse> createStatus(@RequestParam String orderNo) {
+        Long userId = StpUtil.getLoginIdAsLong();
+        return Result.success(orderService.getCreateStatus(userId, orderNo));
     }
 
     @PostMapping("/pay")

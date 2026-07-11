@@ -1,0 +1,27 @@
+# Playwright MCP�?auto+
+.playwright-mcp/
+
+# Screenshots (only root level)
+/*.png
+
+# Logs (only root level)
+/*.log
+
+# Backend build artifacts
+backend/**/target/
+
+# Frontend build artifacts
+frontend/dist/
+frontend/node_modules/
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp

@@ -1,0 +1,153 @@
+SET NAMES utf8mb4;
+
+CREATE DATABASE IF NOT EXISTS online_shop DEFAULT CHARACTER SET utf8mb4 DEFAULT COLLATE utf8mb4_unicode_ci;
+
+USE online_shop;
+
+-- 用户表
+CREATE TABLE IF NOT EXISTS ums_user (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(64) NOT NULL UNIQUE COMMENT '用户名',
+    password VARCHAR(128) NOT NULL COMMENT '密码',
+    nickname VARCHAR(64) DEFAULT NULL COMMENT '昵称',
+    phone VARCHAR(20) DEFAULT NULL COMMENT '手机号',
+    email VARCHAR(128) DEFAULT NULL COMMENT '邮箱',
+    avatar VARCHAR(255) DEFAULT NULL COMMENT '头像',
+    status TINYINT DEFAULT 1 COMMENT '状态：0-禁用 1-启用',
+    role TINYINT DEFAULT 0 COMMENT '角色：0-普通用户 1-管理员',
+    create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户表';
+
+-- 收货地址表
+CREATE TABLE IF NOT EXISTS ums_address (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT NOT NULL COMMENT '用户ID',
+    receiver_name VARCHAR(64) NOT NULL COMMENT '收货人',
+    phone VARCHAR(20) NOT NULL COMMENT '手机号',
+    province VARCHAR(64) DEFAULT NULL COMMENT '省份',
+    city VARCHAR(64) DEFAULT NULL COMMENT '城市',
+    district VARCHAR(64) DEFAULT NULL COMMENT '区县',
+    detail VARCHAR(255) NOT NULL COMMENT '详细地址',
+    is_default TINYINT DEFAULT 0 COMMENT '是否默认：0-否 1-是',
+    create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_user_id (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='收货地址表';
+
+-- 商品分类表
+CREATE TABLE IF NOT EXISTS pms_category (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(64) NOT NULL COMMENT '分类名称',
+    parent_id BIGINT DEFAULT 0 COMMENT '父分类ID，0为根',
+    level INT DEFAULT 1 COMMENT '层级',
+    sort INT DEFAULT 0 COMMENT '排序',
+    icon VARCHAR(255) DEFAULT NULL COMMENT '图标',
+    status TINYINT DEFAULT 1 COMMENT '状态：0-禁用 1-启用',
+    create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='商品分类表';
+
+-- 商品表
+CREATE TABLE IF NOT EXISTS pms_product (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    category_id BIGINT NOT NULL COMMENT '分类ID',
+    name VARCHAR(255) NOT NULL COMMENT '商品名称',
+    subtitle VARCHAR(500) DEFAULT NULL COMMENT '副标题',
+    description TEXT DEFAULT NULL COMMENT '商品描述',
+    main_image VARCHAR(255) DEFAULT NULL COMMENT '主图',
+    sub_images VARCHAR(2000) DEFAULT NULL COMMENT '子图，JSON或逗号分隔',
+    price DECIMAL(10, 2) NOT NULL COMMENT '售价',
+    original_price DECIMAL(10, 2) DEFAULT NULL COMMENT '原价',
+    stock INT DEFAULT 0 COMMENT '总库存',
+    sale_count INT DEFAULT 0 COMMENT '销量',
+    status TINYINT DEFAULT 1 COMMENT '状态：0-下架 1-上架',
+    is_hot TINYINT DEFAULT 0 COMMENT '是否热销：0-否 1-是',
+    is_new TINYINT DEFAULT 0 COMMENT '是否新品：0-否 1-是',
+    sort INT DEFAULT 0 COMMENT '排序',
+    create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_category_id (category_id),
+    INDEX idx_status (status),
+    INDEX idx_is_hot (is_hot),
+    INDEX idx_is_new (is_new)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='商品表';
+
+-- 商品SKU表（简化版，每个商品一个默认SKU）
+CREATE TABLE IF NOT EXISTS pms_sku (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    product_id BIGINT NOT NULL COMMENT '商品ID',
+    sku_code VARCHAR(128) DEFAULT NULL COMMENT 'SKU编码',
+    sku_specs VARCHAR(500) DEFAULT NULL COMMENT '规格JSON',
+    price DECIMAL(10, 2) NOT NULL COMMENT '售价',
+    stock INT DEFAULT 0 COMMENT '库存',
+    sale_count INT DEFAULT 0 COMMENT '销量',
+    status TINYINT DEFAULT 1 COMMENT '状态：0-禁用 1-启用',
+    create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE INDEX idx_sku_code (sku_code),
+    INDEX idx_product_id (product_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='商品SKU表';
+
+-- 轮播图表
+CREATE TABLE IF NOT EXISTS pms_carousel (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    title VARCHAR(128) DEFAULT NULL COMMENT '标题',
+    image VARCHAR(255) NOT NULL COMMENT '图片',
+    link VARCHAR(255) DEFAULT NULL COMMENT '跳转链接',
+    sort INT DEFAULT 0 COMMENT '排序',
+    status TINYINT DEFAULT 1 COMMENT '状态：0-禁用 1-启用',
+    create_time DATETIME DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='轮播图表';
+
+-- 购物车表
+CREATE TABLE IF NOT EXISTS oms_cart_item (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT NOT NULL COMMENT '用户ID',
+    product_id BIGINT NOT NULL COMMENT '商品ID',
+    sku_id BIGINT NOT NULL COMMENT 'SKU ID',
+    quantity INT NOT NULL DEFAULT 1 COMMENT '数量',
+    selected TINYINT DEFAULT 1 COMMENT '是否选中：0-否 1-是',
+    create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE INDEX idx_user_product_sku (user_id, product_id, sku_id),
+    INDEX idx_user_id (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='购物车表';
+
+-- 订单表
+CREATE TABLE IF NOT EXISTS oms_order (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    order_no VARCHAR(64) NOT NULL UNIQUE COMMENT '订单编号',
+    user_id BIGINT NOT NULL COMMENT '用户ID',
+    total_amount DECIMAL(10, 2) NOT NULL COMMENT '订单总金额',
+    pay_amount DECIMAL(10, 2) NOT NULL COMMENT '应付金额',
+    freight_amount DECIMAL(10, 2) DEFAULT 0.00 COMMENT '运费',
+    status TINYINT DEFAULT 0 COMMENT '订单状态：0-待付款 1-已付款 2-已发货 3-已完成 4-已取消',
+    receiver_name VARCHAR(64) DEFAULT NULL COMMENT '收货人',
+    receiver_phone VARCHAR(20) DEFAULT NULL COMMENT '收货电话',
+    receiver_address VARCHAR(500) DEFAULT NULL COMMENT '收货地址',
+    pay_time DATETIME DEFAULT NULL COMMENT '支付时间',
+    deliver_time DATETIME DEFAULT NULL COMMENT '发货时间',
+    finish_time DATETIME DEFAULT NULL COMMENT '完成时间',
+    remark VARCHAR(500) DEFAULT NULL COMMENT '备注',
+    create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_user_id (user_id),
+    INDEX idx_order_no (order_no),
+    INDEX idx_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='订单表';
+
+-- 订单项表
+CREATE TABLE IF NOT EXISTS oms_order_item (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    order_id BIGINT NOT NULL COMMENT '订单ID',
+    product_id BIGINT NOT NULL COMMENT '商品ID',
+    sku_id BIGINT NOT NULL COMMENT 'SKU ID',
+    product_name VARCHAR(255) NOT NULL COMMENT '商品名称',
+    product_image VARCHAR(255) DEFAULT NULL COMMENT '商品图片',
+    price DECIMAL(10, 2) NOT NULL COMMENT '单价',
+    quantity INT NOT NULL COMMENT '数量',
+    total_amount DECIMAL(10, 2) NOT NULL COMMENT '小计',
+    create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_order_id (order_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='订单项表';

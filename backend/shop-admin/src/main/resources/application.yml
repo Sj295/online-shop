@@ -5,16 +5,17 @@ spring:
   application:
     name: shop-admin
   datasource:
-    url: jdbc:mysql://localhost:3306/online_shop?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false
+    url: jdbc:mysql://localhost:3306/online_shop?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&rewriteBatchedStatements=true&useServerPrepStmts=false
     username: root
     password: root
     driver-class-name: com.mysql.cj.jdbc.Driver
     hikari:
-      minimum-idle: 5
-      maximum-pool-size: 20
-      connection-timeout: 30000
-      idle-timeout: 600000
-      max-lifetime: 1800000
+      minimum-idle: 10
+      maximum-pool-size: 50
+      connection-timeout: 5000
+      idle-timeout: 300000
+      max-lifetime: 1200000
+      pool-name: shop-admin-pool
   data:
     redis:
       host: localhost
@@ -23,9 +24,9 @@ spring:
       timeout: 3000ms
       lettuce:
         pool:
-          max-active: 8
-          max-idle: 8
-          min-idle: 2
+          max-active: 50
+          max-idle: 20
+          min-idle: 5
 
 sa-token:
   token-name: Authorization

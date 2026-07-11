@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.shop.common.mapper.OrderItemMapper">
+
+    <insert id="insertBatch">
+        INSERT INTO oms_order_item (
+            order_id, product_id, sku_id, product_name, product_image,
+            price, quantity, total_amount, create_time
+        ) VALUES
+        <foreach collection="list" item="item" separator=",">
+            (
+                #{item.orderId}, #{item.productId}, #{item.skuId}, #{item.productName}, #{item.productImage},
+                #{item.price}, #{item.quantity}, #{item.totalAmount}, #{item.createTime}
+            )
+        </foreach>
+    </insert>
+
+</mapper>

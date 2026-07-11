@@ -13,7 +13,10 @@ public class OrderItemServiceImpl extends ServiceImpl<OrderItemMapper, OrderItem
 
     @Override
     public void saveBatchItems(List<OrderItem> items) {
-        saveBatch(items);
+        if (items == null || items.isEmpty()) {
+            return;
+        }
+        baseMapper.insertBatch(items);
     }
 
     @Override

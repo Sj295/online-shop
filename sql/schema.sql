@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS pms_product (
     is_hot TINYINT DEFAULT 0 COMMENT '是否热销：0-否 1-是',
     is_new TINYINT DEFAULT 0 COMMENT '是否新品：0-否 1-是',
     sort INT DEFAULT 0 COMMENT '排序',
+    version INT DEFAULT 0 COMMENT '乐观锁版本号',
     create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
     update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_category_id (category_id),
@@ -83,6 +84,7 @@ CREATE TABLE IF NOT EXISTS pms_sku (
     stock INT DEFAULT 0 COMMENT '库存',
     sale_count INT DEFAULT 0 COMMENT '销量',
     status TINYINT DEFAULT 1 COMMENT '状态：0-禁用 1-启用',
+    version INT DEFAULT 0 COMMENT '乐观锁版本号',
     create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
     update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE INDEX idx_sku_code (sku_code),
@@ -134,7 +136,8 @@ CREATE TABLE IF NOT EXISTS oms_order (
     update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_user_id (user_id),
     INDEX idx_order_no (order_no),
-    INDEX idx_status (status)
+    INDEX idx_status (status),
+    INDEX idx_create_time (create_time)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='订单表';
 
 -- 订单项表
@@ -149,5 +152,31 @@ CREATE TABLE IF NOT EXISTS oms_order_item (
     quantity INT NOT NULL COMMENT '数量',
     total_amount DECIMAL(10, 2) NOT NULL COMMENT '小计',
     create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_order_id (order_id)
+    INDEX idx_order_id (order_id),
+    INDEX idx_product_id (product_id),
+    INDEX idx_sku_id (sku_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='订单项表';
+
+-- 订单归档表
+CREATE TABLE IF NOT EXISTS oms_order_archive (
+    id BIGINT PRIMARY KEY COMMENT '原订单ID',
+    order_no VARCHAR(64) NOT NULL COMMENT '订单编号',
+    user_id BIGINT NOT NULL COMMENT '用户ID',
+    total_amount DECIMAL(10, 2) NOT NULL COMMENT '订单总金额',
+    pay_amount DECIMAL(10, 2) NOT NULL COMMENT '应付金额',
+    freight_amount DECIMAL(10, 2) DEFAULT 0.00 COMMENT '运费',
+    status TINYINT DEFAULT 0 COMMENT '订单状态',
+    receiver_name VARCHAR(64) DEFAULT NULL COMMENT '收货人',
+    receiver_phone VARCHAR(20) DEFAULT NULL COMMENT '收货电话',
+    receiver_address VARCHAR(500) DEFAULT NULL COMMENT '收货地址',
+    pay_time DATETIME DEFAULT NULL COMMENT '支付时间',
+    deliver_time DATETIME DEFAULT NULL COMMENT '发货时间',
+    finish_time DATETIME DEFAULT NULL COMMENT '完成时间',
+    remark VARCHAR(500) DEFAULT NULL COMMENT '备注',
+    create_time DATETIME DEFAULT NULL COMMENT '原订单创建时间',
+    archive_time DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '归档时间',
+    INDEX idx_user_id (user_id),
+    INDEX idx_order_no (order_no),
+    INDEX idx_status (status),
+    INDEX idx_create_time (create_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='订单归档表';

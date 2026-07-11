@@ -3,6 +3,7 @@ package com.shop.common.entity;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.baomidou.mybatisplus.annotation.Version;
 import lombok.Data;
 
 import java.math.BigDecimal;
@@ -29,6 +30,10 @@ public class Product {
     private Integer isHot;
     private Integer isNew;
     private Integer sort;
+
+    @Version
+    private Integer version;
+
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
 }

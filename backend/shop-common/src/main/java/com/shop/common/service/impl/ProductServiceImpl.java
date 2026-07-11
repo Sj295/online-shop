@@ -3,16 +3,18 @@ package com.shop.common.service.impl;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.shop.common.bloom.BloomFilterService;
+import com.shop.common.cache.CacheNames;
 import com.shop.common.entity.Product;
 import com.shop.common.exception.BusinessException;
 import com.shop.common.mapper.ProductMapper;
 import com.shop.common.result.ResultCode;
-import com.shop.common.cache.CacheNames;
 import com.shop.common.service.ProductService;
 import com.shop.common.util.RedisKeyUtil;
+import com.shop.common.util.RedissonLockUtil;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
-import org.springframework.cache.annotation.Cacheable;
-import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -21,21 +23,51 @@ import java.util.concurrent.TimeUnit;
 @Service
 public class ProductServiceImpl extends ServiceImpl<ProductMapper, Product> implements ProductService {
 
-    private final StringRedisTemplate redisTemplate;
+    private final BloomFilterService bloomFilterService;
+    private final CacheManager cacheManager;
+    private final RedissonLockUtil lockUtil;
 
-    public ProductServiceImpl(StringRedisTemplate redisTemplate) {
-        this.redisTemplate = redisTemplate;
+    public ProductServiceImpl(BloomFilterService bloomFilterService,
+                              CacheManager cacheManager,
+                              RedissonLockUtil lockUtil) {
+        this.bloomFilterService = bloomFilterService;
+        this.cacheManager = cacheManager;
+        this.lockUtil = lockUtil;
     }
 
     @Override
-    @Cacheable(value = CacheNames.PRODUCT, key = "#id")
     @CircuitBreaker(name = "productDetail", fallbackMethod = "getDetailFallback")
     public Product getDetail(Long id) {
-        Product product = lambdaQuery().eq(Product::getId, id).eq(Product::getStatus, 1).one();
-        if (product == null) {
+        if (!bloomFilterService.mightContain(id)) {
             throw new BusinessException(ResultCode.PRODUCT_NOT_FOUND);
         }
-        return product;
+
+        Cache cache = cacheManager.getCache(CacheNames.PRODUCT);
+        Product cached = cache != null ? cache.get(id, Product.class) : null;
+        if (cached != null) {
+            return cached;
+        }
+
+        String lockKey = RedisKeyUtil.productCacheLockKey(id);
+        boolean locked = lockUtil.tryLock(lockKey, 200, 5, TimeUnit.MILLISECONDS);
+        try {
+            cached = cache != null ? cache.get(id, Product.class) : null;
+            if (cached != null) {
+                return cached;
+            }
+            Product product = lambdaQuery().eq(Product::getId, id).eq(Product::getStatus, 1).one();
+            if (product == null) {
+                throw new BusinessException(ResultCode.PRODUCT_NOT_FOUND);
+            }
+            if (cache != null) {
+                cache.put(id, product);
+            }
+            return product;
+        } finally {
+            if (locked) {
+                lockUtil.unlock(lockKey);
+            }
+        }
     }
 
     public Product getDetailFallback(Long id, Throwable t) {
@@ -64,17 +96,12 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper, Product> impl
     }
 
     @Override
-    @Cacheable(value = CacheNames.PRODUCT, key = "'hot:' + #limit")
     public List<Product> listHot(Integer limit) {
-        String key = RedisKeyUtil.HOT_PRODUCTS;
-        // 缓存热门商品ID列表，简化处理
-        List<Product> products = lambdaQuery().eq(Product::getStatus, 1).eq(Product::getIsHot, 1)
+        return lambdaQuery().eq(Product::getStatus, 1).eq(Product::getIsHot, 1)
                 .orderByDesc(Product::getSaleCount).last("LIMIT " + limit).list();
-        return products;
     }
 
     @Override
-    @Cacheable(value = CacheNames.PRODUCT, key = "'new:' + #limit")
     public List<Product> listNew(Integer limit) {
         return lambdaQuery().eq(Product::getStatus, 1).eq(Product::getIsNew, 1)
                 .orderByDesc(Product::getCreateTime).last("LIMIT " + limit).list();

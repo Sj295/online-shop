@@ -48,4 +48,12 @@ public class RedisKeyUtil {
     public static String productCacheLockKey(Long productId) {
         return PREFIX + "lock:cache:product:" + productId;
     }
+
+    public static String productStockKey(Long productId) {
+        return PREFIX + "stock:product:" + productId;
+    }
+
+    public static String skuStockKey(Long skuId) {
+        return PREFIX + "stock:sku:" + skuId;
+    }
 }

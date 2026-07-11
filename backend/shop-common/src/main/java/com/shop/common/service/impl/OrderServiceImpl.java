@@ -6,6 +6,7 @@ import com.shop.common.exception.BusinessException;
 import com.shop.common.mapper.OrderMapper;
 import com.shop.common.result.ResultCode;
 import com.shop.common.service.*;
+import com.shop.common.stock.RedisStockService;
 import com.shop.common.util.IdUtil;
 import com.shop.common.util.RedisKeyUtil;
 import com.shop.common.util.RedissonLockUtil;
@@ -33,16 +34,19 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
     private final SkuService skuService;
     private final OrderItemService orderItemService;
     private final RedissonLockUtil lockUtil;
+    private final RedisStockService redisStockService;
 
     public OrderServiceImpl(CartItemService cartItemService, AddressService addressService,
                             ProductService productService, SkuService skuService,
-                            OrderItemService orderItemService, RedissonLockUtil lockUtil) {
+                            OrderItemService orderItemService, RedissonLockUtil lockUtil,
+                            RedisStockService redisStockService) {
         this.cartItemService = cartItemService;
         this.addressService = addressService;
         this.productService = productService;
         this.skuService = skuService;
         this.orderItemService = orderItemService;
         this.lockUtil = lockUtil;
+        this.redisStockService = redisStockService;
     }
 
     @Override
@@ -69,19 +73,35 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
             String orderNo = IdUtil.generateOrderNo();
             BigDecimal totalAmount = BigDecimal.ZERO;
             List<OrderItem> orderItems = new ArrayList<>();
+            List<StockRecord> deductedRecords = new ArrayList<>();
 
             for (CartItemVO cartItem : cartItems) {
                 Product product = productService.getDetail(cartItem.getProductId());
                 Sku sku = skuService.getDefaultByProductId(product.getId());
                 if (sku == null) {
+                    rollbackRedisStock(deductedRecords);
                     throw new BusinessException(ResultCode.BUSINESS_ERROR.getCode(), "商品规格不存在");
                 }
 
-                // 数据库 CAS 扣减库存，无需分布式锁
-                skuService.decreaseStock(sku.getId(), cartItem.getQuantity());
-                productService.decreaseStock(product.getId(), cartItem.getQuantity());
+                int quantity = cartItem.getQuantity();
+                boolean redisOk = redisStockService.deductProductStock(product.getId(), quantity)
+                        && redisStockService.deductSkuStock(sku.getId(), quantity);
+                if (!redisOk) {
+                    rollbackRedisStock(deductedRecords);
+                    throw new BusinessException(ResultCode.STOCK_NOT_ENOUGH);
+                }
+                deductedRecords.add(new StockRecord(product.getId(), sku.getId(), quantity));
 
-                BigDecimal itemTotal = product.getPrice().multiply(new BigDecimal(cartItem.getQuantity()));
+                try {
+                    // 数据库 CAS 扣减库存，作为最终兜底
+                    skuService.decreaseStock(sku.getId(), quantity);
+                    productService.decreaseStock(product.getId(), quantity);
+                } catch (BusinessException e) {
+                    rollbackRedisStock(deductedRecords);
+                    throw e;
+                }
+
+                BigDecimal itemTotal = product.getPrice().multiply(new BigDecimal(quantity));
                 totalAmount = totalAmount.add(itemTotal);
 
                 OrderItem orderItem = new OrderItem();
@@ -90,7 +110,7 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
                 orderItem.setProductName(product.getName());
                 orderItem.setProductImage(product.getMainImage());
                 orderItem.setPrice(product.getPrice());
-                orderItem.setQuantity(cartItem.getQuantity());
+                orderItem.setQuantity(quantity);
                 orderItem.setTotalAmount(itemTotal);
                 orderItems.add(orderItem);
             }
@@ -123,6 +143,16 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
         } finally {
             lockUtil.unlock(cartLockKey);
         }
+    }
+
+    private void rollbackRedisStock(List<StockRecord> records) {
+        for (StockRecord record : records) {
+            redisStockService.refundProductStock(record.productId(), record.quantity());
+            redisStockService.refundSkuStock(record.skuId(), record.quantity());
+        }
+    }
+
+    private record StockRecord(Long productId, Long skuId, Integer quantity) {
     }
 
     private void saveOrderItems(List<OrderItem> orderItems) {

@@ -195,9 +195,10 @@ def check_oversold(product_id: int):
     current_stock = int(cursor.fetchone()[0])
     cursor.execute("SELECT IFNULL(SUM(quantity), 0) FROM oms_order_item WHERE product_id = %s", (product_id,))
     sold = int(cursor.fetchone()[0])
+    cursor.execute("SELECT stock FROM pms_product WHERE id = %s", (product_id,))
+    initial_stock = int(cursor.fetchone()[0]) + sold
     cursor.close()
     conn.close()
-    initial_stock = 300
     oversold = max(0, sold - initial_stock)
     return {"initial_stock": initial_stock, "current_stock": current_stock, "sold": sold, "oversold": oversold}
 

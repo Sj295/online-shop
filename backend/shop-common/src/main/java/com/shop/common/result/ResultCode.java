@@ -16,7 +16,8 @@ public enum ResultCode {
     ORDER_NOT_FOUND(1002, "order not found"),
     PRODUCT_NOT_FOUND(1003, "product not found"),
     CART_EMPTY(1004, "cart is empty"),
-    PAYMENT_FAILED(1005, "payment failed");
+    PAYMENT_FAILED(1005, "payment failed"),
+    RATE_LIMIT(1006, "请求过于频繁，请稍后再试");
 
     private final Integer code;
     private final String message;

@@ -32,4 +32,20 @@ public class RedisKeyUtil {
     public static String idempotentKey(String key) {
         return PREFIX + "idempotent:" + key;
     }
+
+    public static String productCacheKey(Long productId) {
+        return PREFIX + "cache:product:" + productId;
+    }
+
+    public static String skuCacheKey(Long productId) {
+        return PREFIX + "cache:sku:" + productId;
+    }
+
+    public static String addressCacheKey(Long addressId) {
+        return PREFIX + "cache:address:" + addressId;
+    }
+
+    public static String productCacheLockKey(Long productId) {
+        return PREFIX + "lock:cache:product:" + productId;
+    }
 }

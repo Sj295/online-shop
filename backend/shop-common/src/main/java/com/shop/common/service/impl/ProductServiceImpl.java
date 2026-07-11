@@ -7,8 +7,11 @@ import com.shop.common.entity.Product;
 import com.shop.common.exception.BusinessException;
 import com.shop.common.mapper.ProductMapper;
 import com.shop.common.result.ResultCode;
+import com.shop.common.cache.CacheNames;
 import com.shop.common.service.ProductService;
 import com.shop.common.util.RedisKeyUtil;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -25,12 +28,18 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper, Product> impl
     }
 
     @Override
+    @Cacheable(value = CacheNames.PRODUCT, key = "#id")
+    @CircuitBreaker(name = "productDetail", fallbackMethod = "getDetailFallback")
     public Product getDetail(Long id) {
         Product product = lambdaQuery().eq(Product::getId, id).eq(Product::getStatus, 1).one();
         if (product == null) {
             throw new BusinessException(ResultCode.PRODUCT_NOT_FOUND);
         }
         return product;
+    }
+
+    public Product getDetailFallback(Long id, Throwable t) {
+        throw new BusinessException(ResultCode.PRODUCT_NOT_FOUND);
     }
 
     @Override
@@ -55,6 +64,7 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper, Product> impl
     }
 
     @Override
+    @Cacheable(value = CacheNames.PRODUCT, key = "'hot:' + #limit")
     public List<Product> listHot(Integer limit) {
         String key = RedisKeyUtil.HOT_PRODUCTS;
         // 缓存热门商品ID列表，简化处理
@@ -64,6 +74,7 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper, Product> impl
     }
 
     @Override
+    @Cacheable(value = CacheNames.PRODUCT, key = "'new:' + #limit")
     public List<Product> listNew(Integer limit) {
         return lambdaQuery().eq(Product::getStatus, 1).eq(Product::getIsNew, 1)
                 .orderByDesc(Product::getCreateTime).last("LIMIT " + limit).list();

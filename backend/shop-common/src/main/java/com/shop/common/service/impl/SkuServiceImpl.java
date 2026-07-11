@@ -1,17 +1,20 @@
 package com.shop.common.service.impl;
 
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.shop.common.cache.CacheNames;
 import com.shop.common.entity.Sku;
 import com.shop.common.exception.BusinessException;
 import com.shop.common.mapper.SkuMapper;
 import com.shop.common.result.ResultCode;
 import com.shop.common.service.SkuService;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 @Service
 public class SkuServiceImpl extends ServiceImpl<SkuMapper, Sku> implements SkuService {
 
     @Override
+    @Cacheable(value = CacheNames.SKU, key = "#productId")
     public Sku getDefaultByProductId(Long productId) {
         return lambdaQuery().eq(Sku::getProductId, productId).eq(Sku::getStatus, 1).one();
     }

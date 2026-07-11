@@ -1,18 +1,27 @@
 package com.shop.common.service.impl;
 
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.shop.common.cache.CacheNames;
 import com.shop.common.entity.Address;
 import com.shop.common.exception.BusinessException;
 import com.shop.common.mapper.AddressMapper;
 import com.shop.common.result.ResultCode;
 import com.shop.common.service.AddressService;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.io.Serializable;
 import java.util.List;
 
 @Service
 public class AddressServiceImpl extends ServiceImpl<AddressMapper, Address> implements AddressService {
+
+    @Override
+    @Cacheable(value = CacheNames.ADDRESS, key = "#id")
+    public Address getById(Serializable id) {
+        return super.getById(id);
+    }
 
     @Override
     public List<Address> listByUserId(Long userId) {

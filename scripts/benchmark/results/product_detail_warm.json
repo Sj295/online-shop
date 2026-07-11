@@ -1,0 +1,13 @@
+{
+  "total": 3000,
+  "success": 3000,
+  "fail": 0,
+  "elapsed_seconds": 3.435,
+  "tps": 873.48,
+  "avg_latency_ms": 93.96,
+  "p50_latency_ms": 94.85,
+  "p95_latency_ms": 147.95,
+  "p99_latency_ms": 175.73,
+  "db_select_delta": 0,
+  "timestamp": "2026-07-11T18:09:50.700103"
+}

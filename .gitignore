@@ -25,3 +25,6 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.temp
+
+# Internal agent instructions (not for public repo)
+AGENTS.md

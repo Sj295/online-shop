@@ -1,14 +1,42 @@
 SET NAMES utf8mb4;
 USE online_shop;
 
--- 商品/SKU 乐观锁版本号
-ALTER TABLE pms_product ADD COLUMN version INT DEFAULT 0 COMMENT '乐观锁版本号';
-ALTER TABLE pms_sku ADD COLUMN version INT DEFAULT 0 COMMENT '乐观锁版本号';
+-- 商品/SKU 乐观锁版本号（幂等：已存在则跳过）
+SET @exist := (SELECT COUNT(*) FROM information_schema.columns
+               WHERE table_schema = 'online_shop' AND table_name = 'pms_product' AND column_name = 'version');
+SET @sql := IF(@exist = 0, 'ALTER TABLE pms_product ADD COLUMN version INT DEFAULT 0 COMMENT ''乐观锁版本号''', 'SELECT ''version already exists in pms_product''');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
--- 订单/订单项常用查询索引
-ALTER TABLE oms_order ADD INDEX idx_create_time (create_time);
-ALTER TABLE oms_order_item ADD INDEX idx_product_id (product_id);
-ALTER TABLE oms_order_item ADD INDEX idx_sku_id (sku_id);
+SET @exist := (SELECT COUNT(*) FROM information_schema.columns
+               WHERE table_schema = 'online_shop' AND table_name = 'pms_sku' AND column_name = 'version');
+SET @sql := IF(@exist = 0, 'ALTER TABLE pms_sku ADD COLUMN version INT DEFAULT 0 COMMENT ''乐观锁版本号''', 'SELECT ''version already exists in pms_sku''');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- 订单/订单项常用查询索引（幂等：已存在则跳过）
+SET @exist := (SELECT COUNT(*) FROM information_schema.statistics
+               WHERE table_schema = 'online_shop' AND table_name = 'oms_order' AND index_name = 'idx_create_time');
+SET @sql := IF(@exist = 0, 'ALTER TABLE oms_order ADD INDEX idx_create_time (create_time)', 'SELECT ''idx_create_time already exists''');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @exist := (SELECT COUNT(*) FROM information_schema.statistics
+               WHERE table_schema = 'online_shop' AND table_name = 'oms_order_item' AND index_name = 'idx_product_id');
+SET @sql := IF(@exist = 0, 'ALTER TABLE oms_order_item ADD INDEX idx_product_id (product_id)', 'SELECT ''idx_product_id already exists''');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @exist := (SELECT COUNT(*) FROM information_schema.statistics
+               WHERE table_schema = 'online_shop' AND table_name = 'oms_order_item' AND index_name = 'idx_sku_id');
+SET @sql := IF(@exist = 0, 'ALTER TABLE oms_order_item ADD INDEX idx_sku_id (sku_id)', 'SELECT ''idx_sku_id already exists''');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
 -- 订单归档表
 CREATE TABLE IF NOT EXISTS oms_order_archive (

@@ -26,5 +26,11 @@ Thumbs.db
 *.tmp
 *.temp
 
-# Internal agent instructions (not for public repo)
-AGENTS.md
+# Benchmark generated artifacts
+scripts/benchmark/results/*.jtl
+scripts/benchmark/results/*.report/
+scripts/benchmark/results/*.csv
+scripts/benchmark/results/*.md
+scripts/benchmark/results/*.json
+scripts/benchmark/*.log
+backend/**/*.log

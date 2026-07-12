@@ -4,13 +4,40 @@
 ![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.2-brightgreen)
 ![React](https://img.shields.io/badge/React-19-61DAFB)
 ![Tailwind CSS](https://img.shields.io/badge/Tailwind%20CSS-4-06B6D4)
+![JMeter](https://img.shields.io/badge/benchmark-JMeter-orange)
 ![License](https://img.shields.io/badge/License-MIT-yellow)
 
 一个以中性色、极简网格与高级感字体为设计基调的在线商城系统。后端采用 Java + Spring Boot 3 + MySQL + Redis 自实现，前端使用 React + Tailwind CSS + Framer Motion。
 
+## 性能亮点
+
+本地 Apache JMeter 压测（100 线程 × 30 轮，商品详情接口共 3000 请求）：
+
+- **MySQL 读查询降为 0**：Warm Cache 下 `Com_select` 零增长，L1 Caffeine + L2 Redis 完全拦截数据库读。
+- **P99 延迟从 10 ms → 3 ms**，降幅 **70%**；P95 从 4 ms → 2 ms，降幅 **50%**。
+- **商品详情 TPS ~620**，缓存命中后数据库读压力从 O(n) 降到接近 O(1)。
+
+👉 [查看完整压测结果与图表](#压测结果)
+
 <p align="center">
   <img src="frontend/public/screenshots/home.png" alt="首页" width="800">
 </p>
+
+## 目录
+
+- [性能亮点](#性能亮点)
+- [技术栈](#技术栈)
+- [项目结构](#项目结构)
+- [快速启动](#快速启动)
+- [演示账号](#演示账号)
+- [接口文档](#接口文档)
+- [已实现功能](#已实现功能)
+- [界面预览](#界面预览)
+- [系统架构](#系统架构)
+- [高并发四层防御架构](#高并发四层防御架构)
+- [压测结果](#压测结果)
+- [本地 JMeter 压测](#本地-jmeter-压测)
+- [GitHub Actions 自动压测](#github-actions-自动压测)
 
 ## 技术栈
 
@@ -48,29 +75,31 @@ online-shop/
 │   ├── schema.sql         # 数据库结构
 │   ├── data.sql           # 演示数据
 │   ├── init.sql           # 一键初始化（DROP + schema + data）
-│   └── optimize_indexes.sql # 生产环境索引/版本号/归档表优化脚本
+│   └── optimize_indexes.sql # 生产环境索引/版本号/归档表优化脚本（幂等）
 ├── scripts/benchmark/     # 压测脚本与结果
 │   ├── prepare_bench_data.py
 │   ├── benchmark_order_create.py
+│   ├── benchmark_product_detail.py
+│   ├── run_jmeter_benchmark.py   # JMeter 一键压测入口
+│   ├── generate_charts.py        # 结果图表生成
+│   ├── jmeter/                   # JMeter 测试计划与生成器
+│   │   ├── generate_jmx.py
+│   │   ├── product_detail_cache.jmx
+│   │   └── order_create.jmx
 │   └── results/
+├── docs/images/           # README 架构图与压测图表
 └── README.md
 ```
 
-## 环境要求
-
-- JDK 17+
-- Node.js 18+
-- MySQL 8.x，账号 `root` / `root`
-- Redis 7.x（本地默认端口 6379）
-
 ## 快速启动
+
+环境要求：JDK 17+、Node.js 18+、MySQL 8（`root`/`root`）、Redis 7、Maven。
 
 ### 1. 初始化数据库
 
 ```bash
 mysql -uroot -proot --default-character-set=utf8mb4 < sql/init.sql
-
-# 生产环境追加索引/乐观锁/归档表（可选）
+# 可选：追加索引/版本号/归档表（幂等）
 mysql -uroot -proot --default-character-set=utf8mb4 < sql/optimize_indexes.sql
 ```
 
@@ -80,7 +109,6 @@ mysql -uroot -proot --default-character-set=utf8mb4 < sql/optimize_indexes.sql
 cd backend
 mvn clean install -DskipTests
 
-# 需要两个终端分别启动
 cd shop-portal && mvn spring-boot:run -DskipTests
 cd shop-admin && mvn spring-boot:run -DskipTests
 ```
@@ -93,7 +121,7 @@ npm install
 npm run dev
 ```
 
-浏览器访问：http://localhost:5173
+访问：http://localhost:5173
 
 ## 演示账号
 
@@ -107,65 +135,110 @@ npm run dev
 - 前台接口文档：http://localhost:8080/doc.html
 - 管理后台接口文档：http://localhost:8081/doc.html
 
+## 已实现功能
+
+- **前台**：首页、商品列表/搜索/详情、购物车、订单创建与模拟支付、订单列表、用户登录/注册。
+- **管理后台**：商品/分类/订单/用户管理。
+
 ## 界面预览
 
 | 首页 | 商品详情 | 订单中心 |
 |---|---|---|
 | ![首页](frontend/public/screenshots/home.png) | ![商品详情](frontend/public/screenshots/product-detail.png) | ![订单中心](frontend/public/screenshots/orders.png) |
 
-## 已实现功能
+## 系统架构
 
-### 前台
-- 首页：轮播图、商品分类、热销推荐、新品上市
-- 商品列表与分类筛选
-- 商品搜索
-- 商品详情
-- 购物车（增删改、选中、数量调整）
-- 订单创建与模拟支付
-- 订单列表与状态筛选
-- 用户登录/注册
+### 整体架构
 
-### 管理后台
-- 管理员登录
-- 商品管理（增删改查、上下架）
-- 分类管理（增删改查）
-- 订单管理（列表、发货）
-- 用户管理（列表、状态调整）
+```mermaid
+flowchart TB
+    User((用户))
+    Browser[浏览器 / Vite 开发服务器]
+    Portal[shop-portal<br/>前台 API :8080]
+    Admin[shop-admin<br/>管理后台 API :8081]
+    Cache[(TwoLevelCache<br/>L1 Caffeine + L2 Redis)]
+    Redis[(Redis 7)]
+    MySQL[(MySQL 8)]
+
+    User --> Browser
+    Browser -->|/api| Portal
+    Browser -->|/api/admin| Admin
+    Portal --> Cache
+    Cache -->|L1 miss / L2 hit| Redis
+    Cache -->|L1/L2 miss| MySQL
+    Portal --> Redis
+    Portal --> MySQL
+    Admin --> MySQL
+```
+
+### L1 / L2 缓存读取流程
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as 客户端
+    participant S as ProductService
+    participant L1 as Caffeine L1
+    participant L2 as Redis L2
+    participant DB as MySQL
+
+    C->>S: GET /api/product/{id}
+    S->>L1: get(id)
+    alt L1 命中
+        L1-->>S: 返回 Product
+        S-->>C: 响应（极快）
+    else L1 未命中
+        S->>L2: GET shop:cache:product:{id}
+        alt L2 命中
+            L2-->>S: 返回 JSON
+            S->>L1: put(id, product)
+            S-->>C: 响应（较快）
+        else L2 未命中
+            S->>S: 获取分布式锁
+            S->>DB: SELECT * FROM pms_product
+            DB-->>S: 返回 Product
+            S->>L1: put(id, product)
+            S->>L2: SET shop:cache:product:{id}
+            S-->>C: 响应（回源）
+        end
+    end
+```
 
 ## 高并发四层防御架构
 
 针对 `POST /api/order/create` 下单链路，按“流量逐层递减”的思路做了四层递进式优化：
 
-```
-客户端请求
-    │
-    ▼
-┌─────────────────────────────────────┐
-│ Layer 1：应用层                      │  L1 Caffeine + L2 Redis 两级缓存
-│  · 接口限流（Redis + Lua 滑动窗口）  │  Resilience4j 熔断 / 降级
-│  · Sa-Token 无状态登录              │
-└─────────────────────────────────────┘
-    │
-    ▼
-┌─────────────────────────────────────┐
-│ Layer 2：缓存层                      │  布隆过滤器防穿透
-│  · 热点 key 分布式锁重建缓存         │  TTL 抖动防止缓存雪崩
-│  · Redis Lua 原子库存预扣            │  DB CAS 最终兜底
-└─────────────────────────────────────┘
-    │
-    ▼
-┌─────────────────────────────────────┐
-│ Layer 3：异步队列层                  │  Redis List 异步任务队列
-│  · 下单先预扣库存再入队，立即返回    │  后台恒定速率 Worker 消费落库
-│  · UserID+商品维度幂等锁             │  GET /api/order/create/status 轮询
-└─────────────────────────────────────┘
-    │
-    ▼
-┌─────────────────────────────────────┐
-│ Layer 4：存储层                      │  订单明细批量插入（INSERT ... VALUES）
-│  · HikariCP + Redis Lettuce 连接池调优│  MyBatis-Plus @Version 乐观锁
-│  · 关键索引与订单归档表              │  库存 CAS 兜底
-└─────────────────────────────────────┘
+```mermaid
+flowchart LR
+    subgraph L1["Layer 1：应用层"]
+        A1[接口限流]
+        A2[L1 Caffeine<br/>L2 Redis 缓存]
+        A3[Resilience4j<br/>熔断/降级]
+        A4[Sa-Token<br/>无状态登录]
+    end
+
+    subgraph L2["Layer 2：缓存层"]
+        B1[布隆过滤器防穿透]
+        B2[热点 key<br/>分布式锁重建]
+        B3[Redis Lua<br/>原子库存预扣]
+        B4[TTL 抖动<br/>防雪崩]
+    end
+
+    subgraph L3["Layer 3：异步队列层"]
+        C1[下单预扣库存]
+        C2[Redis List 入队]
+        C3[后台 Worker 消费落库]
+        C4[UserID+商品维度幂等锁]
+    end
+
+    subgraph L4["Layer 4：存储层"]
+        D1[HikariCP 连接池]
+        D2[批量插入订单明细]
+        D3[MyBatis-Plus @Version 乐观锁]
+        D4[关键索引与归档表]
+    end
+
+    L1 --> L2 --> L3 --> L4
 ```
 
 ### 关键代码位置
@@ -184,97 +257,133 @@ npm run dev
 | Layer 4 | 连接池调优 | `backend/shop-portal/src/main/resources/application.yml` |
 | Layer 4 | 归档 | `backend/shop-common/src/main/java/com/shop/common/archive/OrderArchiveService.java` |
 
-### 压测结果
+## 压测结果
 
-环境：本地单实例 MySQL 8 + Redis 3.2.100，250 个独立用户各下单 1 次（商品 13 初始库存 300）。
-Layer 3/4 为异步流程，压测脚本会轮询 `/api/order/create/status` 直到 SUCCESS/FAILED。
+> 环境：Windows 10 / JMeter 5.4.1 / JDK 17 / MySQL 8.0.34 / Redis 3.2.100。  
+> 产物见 `scripts/benchmark/results/`（JSON / Markdown / JTL）与 `docs/images/` 图表。
+
+### 缓存效果验证
+
+读多写少的商品详情接口 `GET /api/product/{id}` 最能体现缓存价值：
+
+<p align="center">
+  <img src="docs/images/cache_comparison.png" alt="缓存效果对比" width="900">
+</p>
+
+| 指标 | Cold Cache | Warm Cache | 提升 |
+|------|------------|------------|------|
+| 总请求 | 3000 | 3000 | - |
+| TPS | 621.38 | 621.25 | - |
+| 平均延迟(ms) | 1.76 | 1.37 | +22% |
+| P95(ms) | 4.00 | 2.00 | +50% |
+| P99(ms) | 10.00 | 3.00 | +70% |
+| **MySQL Com_select 增长** | **14** | **0** | **DB 读降为 0** |
+
+Warm Cache 下 `Com_select` 零增长，说明 L1 Caffeine + L2 Redis 完全拦截了商品详情的数据库读，尾延迟显著下降。
+
+### 下单链路演进
+
+<p align="center">
+  <img src="docs/images/four_layer_defense.png" alt="四层防御演进" width="900">
+</p>
+
+环境：250 独立用户各下单 1 次（商品 13 初始库存 300）。Layer 3/4 为异步流程，脚本轮询 `/api/order/create/status` 至 SUCCESS/FAILED。
 
 | 指标 | Baseline | Layer 1 | Layer 2 | Layer 3 | Layer 4 |
 |------|----------|---------|---------|---------|---------|
-| 总请求 | 250 | 250 | 250 | 250 | 250 |
 | 成功下单 | 249 | 189 | 189 | 187 | 189 |
 | 业务失败 | 1 | 61 | 61 | 63 | 61 |
-| 超时 | 0 | 0 | 0 | 0 | 0 |
-| 错误 | 0 | 0 | 0 | 0 | 0 |
-| 耗时(s) | 1.665 | 2.157 | 3.113 | 2.418 | 2.764 |
 | TPS | 149.58 | 87.62 | 60.71 | 77.34 | 68.39 |
 | 平均延迟(ms) | 289.72 | 377.95 | 543.31 | 57.23 | 42.21 |
-| P50(ms) | 310.37 | 462.14 | 728.77 | 32.67 | 32.47 |
 | P95(ms) | 331.28 | 634.62 | 899.64 | 194.08 | 105.37 |
 | P99(ms) | 339.80 | 915.75 | 1352.06 | 228.96 | 146.93 |
-| 初始库存 | 300 | 300 | 300 | 300 | 300 |
-| 已售 | 250 | 190 | 190 | 189 | 190 |
-| 当前库存 | 50 | 110 | 110 | 111 | 110 |
 | 超卖数 | 0 | 0 | 0 | 0 | 0 |
 
-说明：
-- **Baseline**：同步落库，TPS 最高，但所有压力直接打到 MySQL，P99 接近 340ms。
-- **Layer 1/2**：增加缓存与 Redis 预扣后，同步链路变长，TPS 下降、P99 上升；但请求量被缓存层拦截，MySQL 压力显著降低。
-- **Layer 3/4**：改为异步队列后，接口立即返回 `PENDING`，平均/P95/P99 延迟大幅下降；Worker 恒定速率消费，流量被削峰填谷，数据库压力进一步降低。
-- 所有层级均保持 **超卖数为 0**，库存一致性通过“Redis Lua 预扣 + DB CAS 兜底 + 失败回滚”保证。
+- **Baseline**：同步落库，直接压 MySQL，P99 约 340ms。
+- **Layer 1/2**：限流 + 缓存 + Redis 预扣，同步链路变长但 MySQL 压力下降。
+- **Layer 3/4**：异步队列削峰填谷，接口立即返回 `PENDING`，延迟大幅下降；全层级 **0 超卖**。
 
-### 缓存效果验证（扩大规模）
+### 下单链路延迟
 
-下单链路受库存和 IP 限流（200/60s）约束，继续放大并发会先把限流/库存耗尽，无法单独体现缓存价值。因此用**读多写少**的商品详情接口 `GET /api/product/{id}` 做验证：
+<p align="center">
+  <img src="docs/images/order_create_latency.png" alt="下单链路延迟" width="600">
+</p>
 
-| 指标 | Cold Cache（缓存未命中） | Warm Cache（缓存已命中） |
-|------|--------------------------|--------------------------|
-| 总请求 | 3000 | 3000 |
-| 成功 | 2997 | 3000 |
-| 失败 | 3 | 0 |
-| 并发 workers | 100 | 100 |
-| 耗时(s) | 4.095 | 3.435 |
-| TPS | 731.85 | 873.48 |
-| 平均延迟(ms) | 121.02 | 93.96 |
-| P95(ms) | 184.24 | 147.95 |
-| P99(ms) | 231.92 | 175.73 |
-| **MySQL `Com_select` 增长** | **6** | **0** |
+| 指标 | 数值 |
+|------|------|
+| 总请求 | 500 |
+| 成功 | 450 |
+| 失败 | 50 |
+| 错误率 | 10.0% |
+| TPS | 93.05 |
+| 平均延迟(ms) | 129.59 |
+| P95(ms) | 412.05 |
+| P99(ms) | 577.01 |
 
-说明：
-- Cold 时只有少数请求真正打到 MySQL（Caffeine L1 + Redis L2 快速回填），随后 3000 请求几乎全部走缓存。
-- Warm 时 `Com_select` 增长为 **0**，证明缓存完全拦截了对商品详情的数据库查询。
-- TPS 提升约 19%，延迟降低约 22%，且数据库读压力从 O(n) 降到接近 O(1)。
+## 本地 JMeter 压测
 
-同时把下单压测规模放大到 **500 用户 × 2 请求 = 1000 请求、100 workers**：
-
-| 指标 | Baseline（同步） | Layer 4（异步+缓存+限流） |
-|------|------------------|---------------------------|
-| 总请求 | 1000 | 1000 |
-| 成功 | 299 | 95 |
-| 业务失败 | 701 | 905 |
-| 超时/错误 | 0 | 0 |
-| 平均延迟(ms) | 365.61 | 127.23 |
-| P95(ms) | 751.78 | 200.27 |
-| P99(ms) | 787.28 | 230.34 |
-| 已售 | 300 | 96 |
-| 超卖 | 0 | 0 |
-
-说明：
-- Layer 4 的“业务失败”绝大多数来自** IP 限流**（200/60s），而非系统故障；成功请求的延迟显著低于 Baseline。
-- Baseline 没有限流，失败全部来自库存耗尽。
-- 两者都保持 **0 超卖**。
-
-### 压测脚本使用
+前置条件（Windows 示例）：
 
 ```bash
-cd scripts/benchmark
+export JMETER_HOME=/c/develop/apache-jmeter-5.4.1
+export PATH=$PATH:/c/develop/apache-jmeter-5.4.1/bin:/c/develop/Redis-x64-3.2.100
 
-# 重置数据库并创建压测用户（每次压测前执行）
-python prepare_bench_data.py --users 250
-
-# Baseline / Layer 1 / Layer 2（同步下单）
-python benchmark_order_create.py --users 250 --requests-per-user 1 --output results/baseline.json
-
-# Layer 3 / Layer 4（异步下单，需要轮询状态）
-python benchmark_order_create.py --users 250 --requests-per-user 1 --poll --output results/layer3.json
+jmeter --version
+redis-cli ping
 ```
 
-原始数据文件位于 `scripts/benchmark/results/`。
+1. 安装依赖：
+```bash
+cd scripts/benchmark
+pip install -r requirements.txt
+```
 
-## 商品图片视觉规范
+2. 重置数据库并准备压测数据：
+```bash
+mysql -uroot -proot --default-character-set=utf8mb4 < sql/init.sql
+mysql -uroot -proot --default-character-set=utf8mb4 < sql/optimize_indexes.sql
 
-- 统一采用 4:5 竖版比例容器
-- 图片使用 `object-cover` 填充，保持视觉一致性
-- 圆角 `rounded-xl` / `rounded-2xl`，柔和过渡
-- 中性灰背景占位，避免加载时突兀
-- 卡片无粗边框，使用阴影与留白体现层级
+cd scripts/benchmark
+python prepare_bench_data.py --users 250
+```
+
+3. 构建并启动后端：
+```bash
+cd backend
+mvn clean install -DskipTests
+cd shop-portal && mvn spring-boot:run -DskipTests
+```
+
+4. 一键压测：
+```bash
+cd scripts/benchmark
+python run_jmeter_benchmark.py \
+  --wait-for-backend \
+  --users 250 \
+  --product-threads 100 --product-loops 30 \
+  --order-threads 250 --order-loops 1 \
+  --ramp-up 5 \
+  --restart-cmd "python restart_backend.py"
+```
+
+5. 生成图表：
+```bash
+cd scripts/benchmark
+python generate_charts.py
+```
+
+产物：
+- `results/jmeter_summary.json` / `jmeter_report.md`
+- `results/*.jtl`
+- `results/*.report/index.html`（加 `--html-report` 时）
+- `docs/images/*.png`
+
+## GitHub Actions 自动压测
+
+修改 `backend/`、`scripts/benchmark/` 或 `.github/workflows/benchmark.yml` 时自动触发；也可手动运行：
+
+```bash
+gh workflow run benchmark.yml
+```
+
+工作流会启动 MySQL + Redis，构建并运行 JMeter 压测，生成图表并上传产物，结果摘要写入 Actions 运行页。

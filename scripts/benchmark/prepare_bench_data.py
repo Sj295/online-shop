@@ -2,6 +2,7 @@
 """Prepare benchmark data: reset DB and create N users/addresses/carts."""
 
 import argparse
+import csv
 import json
 import os
 import subprocess
@@ -103,9 +104,18 @@ def create_bench_data(users: int, product_id: int, sku_id: int, quantity: int):
     with open(os.path.join(results_dir, "bench_users.json"), "w", encoding="utf-8") as f:
         json.dump(user_map, f, ensure_ascii=False, indent=2)
 
+    # Generate CSV for JMeter
+    csv_path = os.path.join(results_dir, "bench_users.csv")
+    with open(csv_path, "w", encoding="utf-8", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["username", "addressId"])
+        for username in sorted(user_map):
+            writer.writerow([username, user_map[username]["address_id"]])
+
     cursor.close()
     conn.close()
     print(f"[prepare] created {users} bench users for product={product_id} sku={sku_id}")
+    print(f"[prepare] JMeter CSV written to {csv_path}")
 
 
 def main():

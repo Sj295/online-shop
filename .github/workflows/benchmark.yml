@@ -1,0 +1,179 @@
+name: JMeter Benchmark
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'backend/**'
+      - 'scripts/benchmark/**'
+      - '.github/workflows/benchmark.yml'
+  pull_request:
+    branches: [main, master]
+    paths:
+      - 'backend/**'
+      - 'scripts/benchmark/**'
+  workflow_dispatch:
+    inputs:
+      product_threads:
+        description: 'Product detail threads'
+        required: true
+        default: '100'
+      product_loops:
+        description: 'Product detail loops per thread'
+        required: true
+        default: '30'
+      order_threads:
+        description: 'Order create threads'
+        required: true
+        default: '100'
+      order_loops:
+        description: 'Order create loops per thread'
+        required: true
+        default: '1'
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  benchmark:
+    name: Run JMeter Load Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: online_shop
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h localhost -uroot -proot"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: scripts/benchmark/requirements.txt
+
+      - name: Install Python dependencies
+        working-directory: scripts/benchmark
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Initialize database
+        run: |
+          mysql -h127.0.0.1 -uroot -proot --default-character-set=utf8mb4 online_shop < sql/init.sql
+
+      - name: Build backend
+        working-directory: backend
+        run: mvn clean install -DskipTests
+
+      - name: Install JMeter
+        run: |
+          JMETER_VERSION=5.6.3
+          wget -q https://downloads.apache.org/jmeter/binaries/apache-jmeter-${JMETER_VERSION}.tgz
+          tar -xzf apache-jmeter-${JMETER_VERSION}.tgz
+          sudo mv apache-jmeter-${JMETER_VERSION} /opt/jmeter
+          echo "/opt/jmeter/bin" >> $GITHUB_PATH
+
+      - name: Start backend
+        working-directory: backend/shop-portal
+        env:
+          SPRING_DATASOURCE_URL: jdbc:mysql://127.0.0.1:3306/online_shop?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+          SPRING_DATASOURCE_USERNAME: root
+          SPRING_DATASOURCE_PASSWORD: root
+          SPRING_REDIS_HOST: 127.0.0.1
+          SPRING_REDIS_PORT: 6379
+        run: |
+          nohup mvn spring-boot:run -DskipTests > portal.log 2>&1 &
+          echo "BACKEND_PID=$!" >> $GITHUB_ENV
+
+      - name: Wait for backend
+        run: |
+          for i in $(seq 1 60); do
+            if curl -s http://localhost:8080/api/product/13 | grep -q '"code":200'; then
+              echo "Backend is ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Backend failed to start"
+          cat backend/shop-portal/portal.log
+          exit 1
+
+      - name: Run JMeter benchmarks
+        working-directory: scripts/benchmark
+        run: |
+          python run_jmeter_benchmark.py \
+            --wait-for-backend \
+            --restart-cmd "kill $BACKEND_PID 2>/dev/null || true; redis-cli -h 127.0.0.1 FLUSHDB; cd ../../backend/shop-portal && nohup mvn spring-boot:run -DskipTests > portal.log 2>&1 & sleep 15 && until curl -s http://localhost:8080/api/product/13 | grep -q '"code":200'; do sleep 2; done" \
+            --users 250 \
+            --product-threads ${{ github.event.inputs.product_threads || '100' }} \
+            --product-loops ${{ github.event.inputs.product_loops || '30' }} \
+            --order-threads ${{ github.event.inputs.order_threads || '100' }} \
+            --order-loops ${{ github.event.inputs.order_loops || '1' }} \
+            --ramp-up 5
+
+      - name: Generate result charts
+        working-directory: scripts/benchmark
+        run: python generate_charts.py
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: jmeter-results
+          path: |
+            scripts/benchmark/results/*.jtl
+            scripts/benchmark/results/*.json
+            scripts/benchmark/results/*.md
+            scripts/benchmark/results/*.report/***
+            docs/images/*.png
+
+      - name: Write job summary
+        if: always()
+        working-directory: scripts/benchmark
+        run: |
+          echo "# JMeter 压测结果" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -f results/jmeter_report.md ]; then
+            cat results/jmeter_report.md >> $GITHUB_STEP_SUMMARY
+          else
+            echo "报告生成失败，请查看日志。" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 产物" >> $GITHUB_STEP_SUMMARY
+          echo "- [JMeter Results Artifact](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> $GITHUB_STEP_SUMMARY
+
+      - name: Stop backend
+        if: always()
+        run: kill $BACKEND_PID 2>/dev/null || true
